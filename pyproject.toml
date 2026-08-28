@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rackcheck"
+version = "0.1.0"
+description = "Evidence-based Linux server readiness and fault diagnostics"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=6.0"]
+
+[project.scripts]
+rackcheck = "rackcheck.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rackcheck*"]
