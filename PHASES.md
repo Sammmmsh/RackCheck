@@ -23,3 +23,13 @@ Each phase is a separate Git commit with its verification recorded here.
 - Added a custom-resolver DNS parser with transaction, length, and truncation checks.
 - Added subprocess timeout/output limits; no shell execution or automatic repairs.
 - Verification includes collection/parser tests and Windows/Linux unittest runs.
+
+## Phase 3
+
+- Added deterministic rules, targeted DNS correlation, and recovery guidance.
+- Added JSON, Markdown and escaped, self-contained HTML reports.
+- Added offline snapshots, six labeled fixtures, and conservative before/after
+  comparisons: recovery requires a newly observed PASS.
+- Verification: 29 tests passed on Windows and Ubuntu WSL; all six fixtures
+  produced their expected status. A read-only WSL scan produced a PASS report.
+  This validates the configured virtual Linux checks, not physical hardware.
