@@ -33,3 +33,15 @@ Each phase is a separate Git commit with its verification recorded here.
 - Verification: 29 tests passed on Windows and Ubuntu WSL; all six fixtures
   produced their expected status. A read-only WSL scan produced a PASS report.
   This validates the configured virtual Linux checks, not physical hardware.
+
+## Phase 4
+
+- Added bounded, GET-only Redfish resource collection with environment-based
+  credentials, TLS verification, no redirects, and explicit mock provenance.
+- Added an opt-in rootless lab guarded by user, mount and network namespaces.
+- Verified five real lab fault/recovery workflows in Ubuntu WSL: DNS SERVFAIL,
+  stopped endpoint, HTTP 503, capped tmpfs capacity, and simulated Redfish health.
+- Each case measured PASS -> FAIL -> PASS and produced snapshots, reports,
+  recovery comparisons and namespace evidence; normal cleanup completed.
+- Verification: 38 tests passed on Windows and Ubuntu WSL. No physical BMC,
+  disk SMART device, or production host was used for fault injection.

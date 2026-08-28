@@ -1,0 +1,9 @@
+{
+  "redfish": {
+    "base_url": "https://bmc.example.invalid",
+    "paths": ["/redfish/v1/Systems/1", "/redfish/v1/Chassis/1"],
+    "username_env": "RACKCHECK_BMC_USER",
+    "password_env": "RACKCHECK_BMC_PASSWORD",
+    "mock": false
+  }
+}

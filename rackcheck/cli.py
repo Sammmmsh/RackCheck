@@ -46,6 +46,10 @@ def parser():
     demo = sub.add_parser("demo", help="Generate labeled synthetic learning cases")
     demo.add_argument("--scenario", choices=(*SCENARIOS, "all"), default="all")
     demo.add_argument("--output-dir", default="artifacts/demo")
+    lab = sub.add_parser("lab", help="Run real faults inside isolated Linux namespaces")
+    lab_sub = lab.add_subparsers(dest="lab_command", required=True)
+    lab_run = lab_sub.add_parser("run", help="Verify five faults and recoveries; never changes host configuration")
+    lab_run.add_argument("--output-dir", default="artifacts/lab")
     return root
 
 
@@ -71,6 +75,11 @@ def main(argv=None):
                 for format_name, suffix in (("json", "json"), ("markdown", "md"), ("html", "html")):
                     write_text(folder / ("report." + suffix), render(report, format_name))
                 print(f"{name}: {report.status} -> {folder}")
+            return 0
+        if args.command == "lab":
+            from .lab import run_lab
+            destination, summary = run_lab(args.output_dir)
+            print(f"Verified {len(summary['cases'])} isolated fault/recovery cases -> {destination / 'index.html'}")
             return 0
         cfg = load_config(args.config)
         if args.command == "compare":

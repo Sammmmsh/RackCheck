@@ -141,6 +141,33 @@ def evaluate(snapshot, config):
             return "PASS", f"{device}: SMART health passed; this is not a failure prediction"
         rule("smart:" + device, "Hardware", "smart:" + device, smart,
              ["Review vendor-specific SMART output and permissions.", "Use an approved procedure for physical maintenance."])
+    if cfg["redfish"]:
+        rf = cfg["redfish"]
+        for path in rf["paths"]:
+            key = "redfish:" + rf["base_url"] + path
+            def redfish(data):
+                if not boolean(data["ok"]):
+                    return "UNKNOWN", "Cannot retrieve Redfish health: " + str(data.get("error", "probe failed"))
+                if numeric(data["status_code"]) != 200:
+                    return "UNKNOWN", f"Redfish HTTP {data['status_code']}; no hardware health conclusion"
+                resource = data["resource"]
+                state = resource["Status"]
+                if not isinstance(state, dict):
+                    raise ValueError("Missing Redfish Status object")
+                health = [state.get(k) for k in ("Health", "HealthRollup") if state.get(k) is not None]
+                prefix = data.get("provenance", "BMC-reported")
+                summary = f"{prefix}: Health={state.get('Health')}, HealthRollup={state.get('HealthRollup')}, State={state.get('State')}"
+                if "Critical" in health:
+                    return "FAIL", summary
+                if not health or any(h not in ("OK", "Warning", "Critical") for h in health):
+                    return "UNKNOWN", summary + "; incomplete or unrecognized health"
+                if "Warning" in health or state.get("State") in ("Degraded", "Disabled", "Absent", "UnavailableOffline"):
+                    return "WARN", summary
+                return "PASS", summary
+            rule(key, "Hardware API", key, redfish,
+                 ["Inspect the configured resource and its subordinate resources in the BMC.",
+                  "Check access, TLS and resource paths before drawing hardware conclusions.",
+                  "Use an approved physical maintenance procedure; the mock cannot validate real hardware."])
     for target in cfg["network"]["dns"]:
         dns_key = "dns:" + target["name"]
         dns = observations.get(dns_key)

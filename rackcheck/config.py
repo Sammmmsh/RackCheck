@@ -131,11 +131,17 @@ def validate(value: dict) -> dict:
             raise ConfigError("SMART devices must be explicit /dev paths without traversal")
     rf = cfg["redfish"]
     if rf is not None:
-        _object(rf, {"base_url", "paths", "username_env", "password_env", "allow_http"}, "redfish")
+        _object(rf, {"base_url", "paths", "username_env", "password_env", "allow_http", "mock"}, "redfish")
         rf.setdefault("allow_http", False)
+        rf.setdefault("mock", False)
+        if type(rf["mock"]) is not bool:
+            raise ConfigError("redfish.mock must be boolean")
         if type(rf["allow_http"]) is not bool:
             raise ConfigError("redfish.allow_http must be boolean")
         validate_url(rf.get("base_url"), "redfish.base_url", rf["allow_http"])
+        if urlsplit(rf["base_url"]).path not in ("", "/"):
+            raise ConfigError("redfish.base_url must be an origin, without a resource path")
+        rf["base_url"] = rf["base_url"].rstrip("/")
         rf.setdefault("paths", ["/redfish/v1/Systems/1"])
         for path in _list(rf["paths"], "redfish.paths"):
             _text(path, "redfish path", 1024)
@@ -146,6 +152,8 @@ def validate(value: dict) -> dict:
                 raise ConfigError("Redfish credentials must name environment variables")
         if ("username_env" in rf) != ("password_env" in rf):
             raise ConfigError("Specify both credential environment variable names")
+        if "username_env" in rf and urlsplit(rf["base_url"]).scheme != "https":
+            raise ConfigError("Redfish credentials require HTTPS, even when allow_http is set")
     unique_groups = [
         cfg["services"], net["interfaces"], [x["name"] for x in net["dns"]],
         [f'{x["host"]}:{x["port"]}' for x in net["tcp"]], [x["url"] for x in net["http"]],

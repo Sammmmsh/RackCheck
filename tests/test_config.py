@@ -23,6 +23,8 @@ class ConfigTests(unittest.TestCase):
 
     def test_credentials_and_url_traversal_rejected(self):
         for rf in ({"base_url": "https://user:secret@server"}, {"base_url": "http://server"},
+                   {"base_url": "https://server/redfish"},
+                   {"base_url": "http://server", "allow_http": True, "username_env": "USER", "password_env": "PASSWORD"},
                    {"base_url": "https://server", "paths": ["/redfish/v1/../secret"]}):
             with self.subTest(rf=rf), self.assertRaises(ConfigError):
                 validate({"redfish": rf})

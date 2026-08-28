@@ -1,6 +1,7 @@
 """Network primitives run in a child process for an overall wall-clock bound."""
 
 import ipaddress
+import base64
 import json
 import os
 import socket
@@ -24,12 +25,35 @@ def http_get(url, timeout, headers=None, read_body=False):
         response = exc
     with response:
         result = {"ok": True, "status_code": response.code}
-        if read_body:
+        if read_body and 200 <= response.code < 300:
             body = response.read(1_048_577)
             if len(body) > 1_048_576:
                 raise ValueError("HTTP response exceeds 1 MiB")
             result["body"] = json.loads(body)
         return result
+
+
+def redfish_query(target, timeout):
+    """GET only. Credentials are read inside the worker, never passed in argv."""
+    headers = {"Accept": "application/json"}
+    if "username_env" in target:
+        user = os.environ.get(target["username_env"])
+        password = os.environ.get(target["password_env"])
+        if not user or not password:
+            return {"ok": False, "error_kind": "credentials", "error": "Required credential environment variable is unset"}
+        if ":" in user or max(len(user), len(password)) > 4096:
+            return {"ok": False, "error_kind": "credentials", "error": "Invalid Basic authentication credentials"}
+        token = base64.b64encode((user + ":" + password).encode("utf-8")).decode("ascii")
+        headers["Authorization"] = "Basic " + token
+    result = http_get(target["base_url"] + target["path"], timeout, headers, read_body=True)
+    body = result.pop("body", None)
+    result["provenance"] = "configured mock" if target.get("mock") else "BMC-reported; not independently verified"
+    if result["status_code"] == 200:
+        if not isinstance(body, dict):
+            raise ValueError("Redfish response must be a resource object")
+        # Whitelist evidence. Do not retain arbitrary API response bodies or headers.
+        result["resource"] = {k: body[k] for k in ("Id", "Name", "@odata.id", "Status", "PowerState") if k in body}
+    return result
 
 
 def _skip_name(data: bytes, offset: int) -> int:
@@ -117,6 +141,8 @@ def probe(kind, target, timeout):
                 return {"ok": True}
         if kind == "http":
             return http_get(target["url"], timeout)
+        if kind == "redfish":
+            return redfish_query(target, timeout)
         raise ValueError("Unknown probe type")
     except socket.gaierror as exc:
         return {"ok": False, "error_kind": "resolution", "error": str(exc)}

@@ -121,7 +121,9 @@ class Collector:
         return self.command("smart:" + device, ["smartctl", "--json", "--all", device], parse)
 
     def network_probe(self, kind, target):
-        identity = target["name"] if kind == "dns" else (target["url"] if kind == "http" else f'{target["host"]}:{target["port"]}')
+        identity = (target["base_url"] + target["path"] if kind == "redfish" else
+                    target["name"] if kind == "dns" else
+                    target["url"] if kind == "http" else f'{target["host"]}:{target["port"]}')
         key = kind + ":" + identity
         payload = json.dumps({"kind": kind, "target": target, "timeout": self.timeout})
         result = self.run([sys.executable, "-m", "rackcheck.probe_worker", payload], self.timeout + 0.5)
@@ -145,4 +147,7 @@ class Collector:
             observations.append(self.smart(device))
         for kind in ("dns", "tcp", "http"):
             observations.extend(self.network_probe(kind, target) for target in self.config["network"][kind])
+        if self.config["redfish"]:
+            rf = self.config["redfish"]
+            observations.extend(self.network_probe("redfish", {**rf, "path": path}) for path in rf["paths"])
         return Snapshot(socket.gethostname(), self.platform_name, observations)
