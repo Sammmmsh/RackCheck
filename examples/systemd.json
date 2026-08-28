@@ -1,0 +1,5 @@
+{
+  "system": {"min_cpus": 1, "min_memory_mb": 512},
+  "services": ["systemd-journald.service"],
+  "network": {"require_default_route": true}
+}

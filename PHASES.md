@@ -45,3 +45,20 @@ Each phase is a separate Git commit with its verification recorded here.
   recovery comparisons and namespace evidence; normal cleanup completed.
 - Verification: 38 tests passed on Windows and Ubuntu WSL. No physical BMC,
   disk SMART device, or production host was used for fault injection.
+
+## Phase 5
+
+- Hardened JSON/YAML errors, finite data and timestamps, cancellation cleanup,
+  filesystem timeouts, scan deadlines, IPv6 routes and custom-resolver DNS.
+- Corrected SMART history severity and rejected service-command errors and
+  blackhole routes as healthy evidence.
+- Added setup/configuration/security documentation, runbooks, a module map,
+  learning exercises and a GitHub Actions test workflow.
+- Final verification: 57 tests passed on both Windows and Ubuntu WSL. The five
+  isolated lab cases were rerun successfully with the completed code.
+- Built and installed the wheel offline in a fresh Windows environment;
+  verified its CLI and network worker outside the source directory.
+- Validated the YAML example and a read-only systemd/journal scan in WSL;
+  inspected the HTML index and failure report in the browser.
+- See docs/verification.md for exact evidence and untested areas. CI is
+  configured but not run; physical SMART/BMC validation is not claimed.

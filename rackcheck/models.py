@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+import json
 
 
 def utc_now() -> str:
@@ -26,6 +27,10 @@ class Observation:
             raise ValueError("Observation data must be an object")
         if not isinstance(self.source, str) or not isinstance(self.detail, str):
             raise ValueError("Observation source and detail must be strings")
+        try:
+            json.dumps(self.data, allow_nan=False)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise ValueError("Observation data must contain finite JSON values") from exc
 
 
 @dataclass
@@ -42,9 +47,12 @@ class Snapshot:
             raise ValueError("Unsupported snapshot schema_version")
         if self.context not in {"live", "fixture", "lab"}:
             raise ValueError("Invalid snapshot context")
-        if not isinstance(self.hostname, str) or not isinstance(self.platform, str):
-            raise ValueError("Snapshot hostname and platform must be strings")
-        datetime.fromisoformat(self.collected_at)
+        if not isinstance(self.hostname, str) or not isinstance(self.platform, str) or not self.hostname or not self.platform:
+            raise ValueError("Snapshot hostname and platform must be nonempty strings")
+        if not isinstance(self.collected_at, str):
+            raise ValueError("Snapshot collected_at must be an ISO timestamp")
+        if datetime.fromisoformat(self.collected_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("Snapshot timestamps must include a timezone")
         if not isinstance(self.observations, list) or not all(isinstance(o, Observation) for o in self.observations):
             raise ValueError("Snapshot observations must be a list of observations")
         keys = [o.key for o in self.observations]

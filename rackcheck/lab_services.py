@@ -57,7 +57,9 @@ class DnsHandler(socketserver.BaseRequestHandler):
         flags, count = (0x8182, 0) if failure else (0x8180, 1)
         reply = request[:2] + struct.pack("!HHHHH", flags, 1, count, 0, 0) + request[12:]
         if not failure:
-            reply += b"\xc0\x0c" + struct.pack("!HHIH", 1, 1, 0, 4) + b"\x7f\x00\x00\x01"
+            qtype = struct.unpack("!H", request[-4:-2])[0]
+            address = b"\x00" * 15 + b"\x01" if qtype == 28 else b"\x7f\x00\x00\x01"
+            reply += b"\xc0\x0c" + struct.pack("!HHIH", qtype, 1, 0, len(address)) + address
         sock.sendto(reply, self.client_address)
 
 

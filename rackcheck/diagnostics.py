@@ -1,5 +1,6 @@
 """Deterministic diagnostics; unavailable measurements never mean healthy."""
 import math
+import ipaddress
 from .config import validate
 from .models import Finding, Report
 
@@ -69,7 +70,7 @@ def evaluate(snapshot, config):
             rows = data["routes"]
             if not isinstance(rows, list):
                 raise ValueError("Invalid route inventory")
-            present = any(r.get("dst") == "default" for r in rows)
+            present = any(r.get("dst") == "default" and r.get("type", "unicast") == "unicast" for r in rows)
             return ("PASS" if present else "FAIL", "Default route present" if present else "No default route in the collected main table")
         rule("network.default_route", "Network", "network.routes", routes,
              ["Inspect the main routing table and expected gateway.", "A route does not prove gateway reachability."])
@@ -112,8 +113,9 @@ def evaluate(snapshot, config):
                     return "FAIL", f"{identity}: {data.get('error_kind', 'network')} - {data.get('error', 'probe failed')}"
                 if kind == "dns":
                     addresses = data["addresses"]
-                    if not isinstance(addresses, list) or not addresses:
+                    if not isinstance(addresses, list) or not addresses or not all(isinstance(address, str) for address in addresses):
                         raise ValueError("Missing resolved addresses")
+                    addresses = [str(ipaddress.ip_address(address)) for address in addresses]
                     matches = not target["expected_addresses"] or set(target["expected_addresses"]) <= set(addresses)
                     return ("PASS" if matches else "FAIL", f"{identity} resolved to {', '.join(addresses)}; expected addresses satisfied={matches}")
                 if kind == "http":
@@ -128,16 +130,18 @@ def evaluate(snapshot, config):
     for device in cfg["storage"]["smart_devices"]:
         def smart(data, device=device):
             passed, code = data.get("smart_status", {}).get("passed"), data.get("_exit_status")
-            if passed is False or (type(code) is int and code & 0x38):
+            if type(code) is not int or not 0 <= code <= 255:
+                return "UNKNOWN", f"{device}: missing or invalid smartctl exit status"
+            if passed is False or code & 0x18:
                 return "FAIL", f"{device}: SMART reports a health or current attribute failure"
             if data.get("smart_support", {}).get("available") is False:
                 return "UNKNOWN", f"{device}: SMART unsupported (common for virtual disks)"
-            if type(code) is int and code & 7:
+            if code & 7:
                 return "UNKNOWN", f"{device}: command/device access errors (status {code})"
             if passed is not True:
                 return "UNKNOWN", f"{device}: no explicit SMART health result"
-            if type(code) is int and code & 0xC0:
-                return "WARN", f"{device}: health passed but error/self-test history needs review"
+            if code & 0xE0:
+                return "WARN", f"{device}: health passed but attribute/error/self-test history needs review"
             return "PASS", f"{device}: SMART health passed; this is not a failure prediction"
         rule("smart:" + device, "Hardware", "smart:" + device, smart,
              ["Review vendor-specific SMART output and permissions.", "Use an approved procedure for physical maintenance."])

@@ -6,17 +6,25 @@ from pathlib import Path
 import platform
 import socket
 import sys
+import time
 from .config import validate
 from .models import Observation, Snapshot
-from .runner import run
+from .runner import CommandResult, run
 
 
 class Collector:
     def __init__(self, config, runner=run, platform_name=None):
         self.config = validate(config)
-        self.run = runner
+        self.runner = runner
         self.timeout = self.config["timeout_seconds"]
         self.platform_name = platform_name or platform.system()
+        self.deadline = time.monotonic() + self.config["max_duration_seconds"]
+
+    def run(self, argv, timeout):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            return CommandResult("error", detail="Scan deadline exhausted; this observation was not collected")
+        return self.runner(argv, min(timeout, remaining))
 
     def command(self, key, argv, parse):
         if self.platform_name != "Linux":
@@ -59,10 +67,15 @@ class Collector:
                             lambda r: self.json_list(r, "interfaces"))
 
     def routes(self):
-        def parse(result):
-            data = self.json_list(result, "routes")
-            return data
-        return self.command("network.routes", ["ip", "-j", "route", "show", "table", "main"], parse)
+        parts = [self.command("network.routes", ["ip", "-j", family, "route", "show", "table", "main"],
+                              lambda r: self.json_list(r, "routes")) for family in ("-4", "-6")]
+        routes = [{**row, "family": family} for part, family in zip(parts, ("inet", "inet6"))
+                  for row in part.data.get("routes", [])]
+        unavailable = [part for part in parts if part.status != "ok"]
+        status = unavailable[0].status if unavailable else "ok"
+        return Observation("network.routes", status, {"routes": routes},
+                           "IPv4 and IPv6 main routing tables",
+                           "; ".join(part.detail for part in unavailable))
 
     def block_devices(self):
         def parse(result):
@@ -77,6 +90,8 @@ class Collector:
             fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
             if not {"LoadState", "ActiveState", "SubState"} <= fields.keys():
                 raise ValueError("systemd did not return service state")
+            if result.returncode and fields["LoadState"] != "not-found":
+                raise ValueError("systemctl returned an error with incomplete state")
             return fields
         return self.command("service:" + name, ["systemctl", "show", "--no-pager",
             "--property=LoadState,ActiveState,SubState,Result,MainPID", "--", name], parse)
@@ -94,21 +109,14 @@ class Collector:
 
     def filesystem(self, target):
         path = target["path"]
-        if self.platform_name != "Linux":
-            return Observation("filesystem:" + path, "unsupported", detail="Linux filesystem collector requires Linux")
-        try:
-            stat = os.statvfs(path)
-            used = (stat.f_blocks - stat.f_bfree) * stat.f_frsize
-            available = stat.f_bavail * stat.f_frsize
-            denominator = used + available
-            return Observation("filesystem:" + path, "ok", {
-                "path": path, "is_mount": os.path.ismount(path),
-                "total_bytes": stat.f_blocks * stat.f_frsize, "used_bytes": used,
-                "available_bytes": available, "used_percent": used * 100 / denominator if denominator else None,
-                "inodes_total": stat.f_files, "inodes_free": stat.f_favail,
-            }, "os.statvfs; os.path.ismount")
-        except OSError as exc:
-            return Observation("filesystem:" + path, "error", detail=str(exc))
+        def parse(result):
+            if result.returncode:
+                raise ValueError("Cannot read filesystem state")
+            data = json.loads(result.stdout)
+            if not isinstance(data, dict):
+                raise ValueError("Invalid filesystem result")
+            return data
+        return self.command("filesystem:" + path, [sys.executable, "-m", "rackcheck.local_worker", path], parse)
 
     def smart(self, device):
         def parse(result):
@@ -138,6 +146,7 @@ class Collector:
             return Observation(key, "error", detail=str(exc))
 
     def collect(self):
+        self.deadline = time.monotonic() + self.config["max_duration_seconds"]
         observations = [self.inventory(), self.interfaces(), self.routes(), self.block_devices()]
         for target in self.config["storage"]["mounts"]:
             observations.append(self.filesystem(target))

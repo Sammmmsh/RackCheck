@@ -38,3 +38,11 @@ class CliTests(unittest.TestCase):
             path = Path(folder) / "snapshot.json"
             path.write_text('{"schema_version": 99}')
             self.assertEqual(self.invoke(["analyze", str(path)])[0], 2)
+
+    def test_strict_warning_exit_code(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.invoke(["demo", "--scenario", "smart_warning", "--output-dir", folder])
+            root = Path(folder) / "smart_warning"
+            command = ["analyze", str(root / "snapshot.json"), "--config", str(root / "config.json")]
+            self.assertEqual(self.invoke(command)[0], 0)
+            self.assertEqual(self.invoke(command + ["--strict"])[0], 1)

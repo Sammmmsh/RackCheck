@@ -2,14 +2,14 @@
 
 import copy
 import ipaddress
-import json
 import math
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
+from .serialization import loads, read_text
 
 DEFAULTS = {
-    "schema_version": 1, "timeout_seconds": 3,
+    "schema_version": 1, "timeout_seconds": 3, "max_duration_seconds": 120,
     "system": {"min_cpus": 1, "min_memory_mb": 0},
     "network": {"interfaces": [], "require_default_route": False, "dns": [], "tcp": [], "http": []},
     "services": [],
@@ -77,6 +77,7 @@ def validate(value: dict) -> dict:
     if type(cfg["schema_version"]) is not int or cfg["schema_version"] != 1:
         raise ConfigError("schema_version must be 1")
     _number(cfg["timeout_seconds"], "timeout_seconds", 0.1, 30)
+    _number(cfg["max_duration_seconds"], "max_duration_seconds", 1, 600)
     _number(cfg["system"]["min_cpus"], "min_cpus", 1, 65536, True)
     _number(cfg["system"]["min_memory_mb"], "min_memory_mb", 0, 1_000_000_000)
     net = cfg["network"]
@@ -91,14 +92,14 @@ def validate(value: dict) -> dict:
         if len(name.rstrip(".")) > 253 or not all(re.fullmatch(r"[A-Za-z0-9_-]{1,63}", label) for label in name.rstrip(".").split(".")):
             raise ConfigError("Invalid DNS name")
         item.setdefault("expected_addresses", [])
-        for address in _list(item["expected_addresses"], "expected_addresses"):
+        for index, address in enumerate(_list(item["expected_addresses"], "expected_addresses")):
             try:
-                ipaddress.ip_address(address)
+                item["expected_addresses"][index] = str(ipaddress.ip_address(_text(address, "expected address")))
             except ValueError as exc:
                 raise ConfigError("Invalid expected DNS address") from exc
         if item.get("server") is not None:
             try:
-                ipaddress.ip_address(item["server"])
+                item["server"] = str(ipaddress.ip_address(_text(item["server"], "DNS server")))
             except ValueError as exc:
                 raise ConfigError("DNS server must be an IP address") from exc
         item.setdefault("port", 53)
@@ -170,18 +171,19 @@ def load_config(path=None) -> dict:
     if path is None:
         return validate({})
     p = Path(path)
-    if p.stat().st_size > 1_048_576:
-        raise ConfigError("Configuration is larger than 1 MiB")
-    content = p.read_text(encoding="utf-8")
+    content = read_text(p, 1_048_576)
     try:
         if p.suffix.lower() in (".yaml", ".yml"):
             try:
                 import yaml
             except ImportError as exc:
                 raise ConfigError("YAML requires the optional dependency: pip install '.[yaml]'") from exc
-            value = yaml.safe_load(content)
+            try:
+                value = yaml.safe_load(content)
+            except yaml.YAMLError as exc:
+                raise ConfigError("Invalid YAML configuration") from exc
         else:
-            value = json.loads(content)
+            value = loads(content)
     except (ValueError, TypeError) as exc:
         raise ConfigError(f"Cannot parse configuration: {exc}") from exc
     return validate(value)

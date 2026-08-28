@@ -68,6 +68,11 @@ class EndpointTests(unittest.TestCase):
     def test_http_does_not_follow_redirects(self):
         self.assertEqual(probe("http", {"url": self.url + "/redirect"}, 1)["status_code"], 302)
 
+    def test_custom_resolver_queries_expected_address_families(self):
+        target = {"name": "service.rackcheck.test", "server": "127.0.0.1", "port": self.servers.dns.port,
+                  "expected_addresses": ["127.0.0.1", "::1"]}
+        self.assertEqual(probe("dns", target, 1)["addresses"], ["127.0.0.1", "::1"])
+
     def test_redfish_health_and_provenance(self):
         cfg, snapshot = scenario("healthy")
         cfg["redfish"] = {"base_url": self.rf_url, "allow_http": True, "mock": True}
@@ -105,3 +110,9 @@ class EndpointTests(unittest.TestCase):
             with patch("rackcheck.probes.http_get", return_value={"ok": True, "status_code": 200, "body": {
                 "Status": {"Health": "OK"}, "CredentialLeak": "test-secret"}}):
                 self.assertNotIn("test-secret", str(redfish_query(target, 1)))
+
+    def test_credentials_never_sent_over_plain_http(self):
+        target = {"base_url": "http://127.0.0.1", "username_env": "U", "password_env": "P", "path": "/redfish/v1/Systems/1"}
+        with patch("rackcheck.probes.http_get") as get:
+            self.assertEqual(redfish_query(target, 1)["error_kind"], "credentials")
+            get.assert_not_called()

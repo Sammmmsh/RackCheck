@@ -24,6 +24,9 @@ class DiagnosticsTests(unittest.TestCase):
             cfg, snap = scenario("healthy")
             snap.observations[0].data = data
             self.assertEqual(evaluate(snap, cfg).status, "UNKNOWN")
+        cfg, snap = scenario("healthy")
+        next(o for o in snap.observations if o.key == "dns:service.lab").data["addresses"] = [True]
+        self.assertEqual(evaluate(snap, cfg).status, "UNKNOWN")
 
     def test_missing_mount_and_inodes(self):
         for change in ({"is_mount": False}, {"inodes_free": 0}):
@@ -35,6 +38,24 @@ class DiagnosticsTests(unittest.TestCase):
         cfg, snap = scenario("smart_warning")
         snap.observations[-1].data = {"smart_support": {"available": False}, "_exit_status": 0}
         self.assertEqual(evaluate(snap, cfg).status, "UNKNOWN")
+
+    def test_smart_current_failure_history_and_access_bits(self):
+        for code, expected in ((0, "PASS"), (8, "FAIL"), (16, "FAIL"), (32, "WARN"),
+                               (64, "WARN"), (128, "WARN"), (2, "UNKNOWN"), (None, "UNKNOWN")):
+            cfg, snap = scenario("smart_warning")
+            snap.observations[-1].data = {"smart_status": {"passed": True}, "_exit_status": code}
+            with self.subTest(code=code):
+                self.assertEqual(evaluate(snap, cfg).status, expected)
+
+    def test_ipv6_default_route(self):
+        cfg, snap = scenario("healthy")
+        next(o for o in snap.observations if o.key == "network.routes").data = {"routes": [{"dst": "default", "family": "inet6"}]}
+        self.assertEqual(evaluate(snap, cfg).status, "PASS")
+
+    def test_blackhole_default_is_not_a_usable_route(self):
+        cfg, snap = scenario("healthy")
+        next(o for o in snap.observations if o.key == "network.routes").data = {"routes": [{"dst": "default", "type": "blackhole"}]}
+        self.assertEqual(evaluate(snap, cfg).status, "FAIL")
 
 
 class ReportTests(unittest.TestCase):
@@ -63,3 +84,22 @@ class ReportTests(unittest.TestCase):
         after.hostname = "different"
         with self.assertRaises(ValueError):
             compare(evaluate(before, cfg), evaluate(after, cfg))
+
+    def test_compare_rejects_old_evidence_and_other_provenance(self):
+        cfg, before = scenario("healthy")
+        _, after = scenario("healthy")
+        before.collected_at, after.collected_at = "2026-01-02T00:00:00+00:00", "2026-01-01T00:00:00+00:00"
+        with self.assertRaises(ValueError):
+            compare(evaluate(before, cfg), evaluate(after, cfg))
+        after.collected_at = "2026-01-03T00:00:00+00:00"
+        after.context = "live"
+        with self.assertRaises(ValueError):
+            compare(evaluate(before, cfg), evaluate(after, cfg))
+
+    def test_markdown_does_not_create_injected_links(self):
+        cfg, snap = scenario("healthy")
+        snap.hostname = "[click](https://example.invalid)"
+        markdown = render(evaluate(snap, cfg), "markdown")
+        rendered_text = "\n".join(line for line in markdown.splitlines() if not line.startswith("    "))
+        self.assertNotIn("[click](", rendered_text)
+        self.assertIn(r"\[click\]", rendered_text)

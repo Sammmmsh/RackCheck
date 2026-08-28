@@ -97,7 +97,7 @@ def main(argv=None):
         return 1 if args.strict and report.status == "WARN" else report.exit_code
     except BrokenPipeError:
         return 0
-    except (ValueError, OSError, TypeError) as exc:
+    except (ValueError, OSError, TypeError, RecursionError) as exc:
         print(f"rackcheck: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

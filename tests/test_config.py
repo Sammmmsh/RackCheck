@@ -1,5 +1,9 @@
 import unittest
-from rackcheck.config import ConfigError, validate
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+from rackcheck.config import ConfigError, load_config, validate
 from rackcheck.models import Finding, Observation, Report, Snapshot
 
 
@@ -33,6 +37,33 @@ class ConfigTests(unittest.TestCase):
         cfg = validate({"redfish": {"base_url": "http://127.0.0.1:8000", "allow_http": True}})
         self.assertEqual(cfg["redfish"]["paths"], ["/redfish/v1/Systems/1"])
 
+    def test_addresses_must_be_strings_and_are_canonical(self):
+        for address in (True, 1, None, []):
+            with self.subTest(address=address), self.assertRaises(ConfigError):
+                validate({"network": {"dns": [{"name": "x.test", "expected_addresses": [address]}]}})
+        cfg = validate({"network": {"dns": [{"name": "x.test", "expected_addresses": ["2001:0db8::1"]}]}})
+        self.assertEqual(cfg["network"]["dns"][0]["expected_addresses"], ["2001:db8::1"])
+
+    def test_strict_external_json_and_size_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "config.json"
+            for content in ('{"timeout_seconds":1,"timeout_seconds":2}', '{"timeout_seconds":NaN}', " " * 1_048_577):
+                path.write_text(content, encoding="utf-8")
+                with self.subTest(size=len(content)), self.assertRaises(ValueError):
+                    load_config(path)
+
+    def test_yaml_parser_errors_are_controlled(self):
+        class YamlError(Exception):
+            pass
+        def fail(_):
+            raise YamlError("invalid syntax")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "config.yml"
+            path.write_text("invalid: [", encoding="utf-8")
+            with patch.dict("sys.modules", {"yaml": SimpleNamespace(safe_load=fail, YAMLError=YamlError)}):
+                with self.assertRaisesRegex(ConfigError, "Invalid YAML"):
+                    load_config(path)
+
 
 class ModelTests(unittest.TestCase):
     def test_snapshot_roundtrip(self):
@@ -50,6 +81,13 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(Report(snap, []).exit_code, 2)
         self.assertEqual(Report(snap, [Finding("x", "test", "UNKNOWN", "No data")]).status, "UNKNOWN")
         self.assertEqual(Report(snap, [Finding("x", "test", "FAIL", "bad")]).exit_code, 1)
+
+    def test_timezone_and_finite_json_required(self):
+        with self.assertRaises(ValueError):
+            Snapshot("test", "Linux", [], collected_at="2026-01-01T00:00:00")
+        for data in ({"n": float("nan")}, {"n": object()}):
+            with self.assertRaises(ValueError):
+                Observation("x", "ok", data)
 
 
 if __name__ == "__main__":

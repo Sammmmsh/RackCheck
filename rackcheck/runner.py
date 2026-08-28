@@ -28,9 +28,7 @@ def run(argv: list[str], timeout: float, max_bytes=2_097_152) -> CommandResult:
             return CommandResult("unsupported", detail=f"Required executable is unavailable: {argv[0]}")
         except OSError as exc:
             return CommandResult("error", detail=f"Cannot start collector: {exc}")
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        def stop():
             if os.name == "posix":
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
@@ -39,7 +37,14 @@ def run(argv: list[str], timeout: float, max_bytes=2_097_152) -> CommandResult:
             else:
                 proc.kill()
             proc.wait()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            stop()
             return CommandResult("error", detail=f"Collector timed out after {timeout:g}s")
+        except BaseException:
+            stop()
+            raise
         output.seek(0)
         errors.seek(0)
         raw = output.read(max_bytes + 1)

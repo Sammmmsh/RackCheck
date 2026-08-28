@@ -4,18 +4,26 @@ from html import escape
 import json
 
 
+def ordered_findings(report):
+    priority = {"FAIL": 0, "UNKNOWN": 1, "WARN": 2, "PASS": 3}
+    return sorted(report.findings, key=lambda finding: priority[finding.status])
+
+
 def markdown(report):
     def text(value):
-        return escape(str(value)).replace("|", r"\|").replace("\n", " ")
+        value = escape(str(value)).replace("\n", " ").replace("\r", " ")
+        for char in ("\\", "*", "_", "[", "]", "|", "#", "~", chr(96)):
+            value = value.replace(char, "\\" + char)
+        return value
     lines = [f"# RackCheck report: {report.status}", "",
              f"Host: {text(report.snapshot.hostname)} | Context: **{report.snapshot.context}**",
              f"Collected: {text(report.snapshot.collected_at)}", ""]
     if report.snapshot.context != "live":
         lines += ["**Lab/fixture evidence: not production or physical-hardware validation.**", ""]
     lines += ["| Status | Check | Finding |", "| --- | --- | --- |"]
-    lines += [f"| {f.status} | {text(f.check_id)} | {text(f.summary)} |" for f in report.findings]
+    lines += [f"| {f.status} | {text(f.check_id)} | {text(f.summary)} |" for f in ordered_findings(report)]
     lines += ["", "## Recovery and evidence", ""]
-    for f in report.findings:
+    for f in ordered_findings(report):
         lines += [f"### {text(f.check_id)}", "", text(f.summary), ""]
         lines += ["- " + text(step) for step in f.recovery]
         lines += ["- Evidence: " + ", ".join(text(k) for k in f.evidence), ""]
@@ -26,19 +34,21 @@ def markdown(report):
 
 def html(report):
     rows = []
-    for f in report.findings:
+    for f in ordered_findings(report):
         steps = "".join("<li>" + escape(step) + "</li>" for step in f.recovery)
         rows.append(f'<section><div class="label {f.status}">{f.status}</div><h2>{escape(f.check_id)}</h2>'
                     f'<p>{escape(f.summary)}</p><ul>{steps}</ul><p class="meta">Evidence: {escape(", ".join(f.evidence))}</p></section>')
     evidence = "".join(f"<details><summary>{escape(o.key)} · {o.status}</summary>"
                        f"<pre>{escape(json.dumps(o.__dict__, indent=2))}</pre></details>" for o in report.snapshot.observations)
     banner = "" if report.snapshot.context == "live" else "<aside>Lab/fixture evidence. Not production or physical-hardware validation.</aside>"
+    counts = " · ".join(f"{sum(f.status == status for f in report.findings)} {status}" for status in ("FAIL", "UNKNOWN", "WARN", "PASS"))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>RackCheck · {escape(report.snapshot.hostname)}</title><style>
 body{{font:16px/1.55 system-ui,sans-serif;background:#f5f7fa;color:#162235;margin:0}}
 main{{max-width:1000px;margin:auto;padding:32px 20px}}h1{{font-size:32px;margin:8px 0}}
+h1{{overflow-wrap:anywhere}}
 h2{{font-size:18px;margin:0 0 8px;overflow-wrap:anywhere}}section{{background:white;border:1px solid #d8e0eb;border-radius:8px;margin:12px 0;padding:18px}}
 p,li{{overflow-wrap:anywhere}}.meta{{font-size:13px;color:#536176}}.label{{float:right;font-weight:700;font-size:13px;padding:3px 9px;border-radius:5px;margin-left:12px}}
 .PASS{{color:#145c35;background:#e6f5eb}}.FAIL{{color:#9b1820;background:#ffe8e8}}.WARN{{color:#735000;background:#fff2cc}}.UNKNOWN{{color:#374c73;background:#e9eef9}}
@@ -48,6 +58,7 @@ details{{background:white;padding:12px;margin:8px 0}}summary{{cursor:pointer;ove
 </style></head><body><main><div>RACKCHECK / SERVER DIAGNOSTICS</div>
 <h1>{escape(report.snapshot.hostname)} <span class="label {report.status}">{report.status}</span></h1>
 <p class="meta">Context: {report.snapshot.context} · Collected {escape(report.snapshot.collected_at)}</p>
+<p>{counts}</p>
 {banner}{''.join(rows)}<h2>Observation details</h2>{evidence}
 <footer>Read-only diagnosis. Findings do not authorize repairs. Review logs and identifiers before sharing.</footer>
 </main></body></html>"""
@@ -67,7 +78,7 @@ def compare(before, after):
     b, a = before.snapshot, after.snapshot
     if (b.hostname, b.platform, b.context) != (a.hostname, a.platform, a.context):
         raise ValueError("Comparison requires matching host, platform, and provenance")
-    if datetime.fromisoformat(a.collected_at) < datetime.fromisoformat(b.collected_at):
+    if datetime.fromisoformat(a.collected_at.replace("Z", "+00:00")) < datetime.fromisoformat(b.collected_at.replace("Z", "+00:00")):
         raise ValueError("After snapshot is older than before")
     old, new = {f.check_id: f for f in before.findings}, {f.check_id: f for f in after.findings}
     changes = []

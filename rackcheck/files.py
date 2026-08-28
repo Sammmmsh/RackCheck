@@ -1,8 +1,8 @@
-import json
 import os
 from pathlib import Path
 import tempfile
 from .models import Snapshot
+from .serialization import loads, read_text
 
 
 def write_text(path, content):
@@ -19,7 +19,4 @@ def write_text(path, content):
 
 
 def read_snapshot(path):
-    p = Path(path)
-    if p.stat().st_size > 16_777_216:
-        raise ValueError("Snapshot is larger than 16 MiB")
-    return Snapshot.from_dict(json.loads(p.read_text(encoding="utf-8")))
+    return Snapshot.from_dict(loads(read_text(path, 16_777_216)))
