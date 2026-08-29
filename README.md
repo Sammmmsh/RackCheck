@@ -7,6 +7,7 @@ approved repair.
 
 **Start here:** [Quick start](docs/quickstart.md) ·
 [Architecture](docs/architecture.md) · [Learning guide](docs/learning.md) ·
+[Sample report](docs/evidence/dns-failure-report.md) ·
 [Verification record](docs/verification.md) · [Five Git phases](PHASES.md)
 
 ## What is implemented
@@ -83,3 +84,7 @@ Only probe endpoints and machines you are authorized to inspect.
 Reproduce the lab, review the evidence, and understand the code before extending
 or demonstrating the project. No production deployment or physical hardware
 validation is claimed.
+
+## License
+
+RackCheck is available under the [MIT License](LICENSE).

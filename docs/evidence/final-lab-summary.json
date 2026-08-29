@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "record_type": "sanitized_verification_summary",
+  "context": "lab",
+  "source_run_date": "2026-08-28",
+  "verified": true,
+  "raw_artifacts_committed": false,
+  "cases": [
+    {
+      "name": "dns_failure",
+      "baseline": "PASS",
+      "fault": "FAIL",
+      "recovered": "PASS"
+    },
+    {
+      "name": "service_stopped",
+      "baseline": "PASS",
+      "fault": "FAIL",
+      "recovered": "PASS"
+    },
+    {
+      "name": "http_unhealthy",
+      "baseline": "PASS",
+      "fault": "FAIL",
+      "recovered": "PASS"
+    },
+    {
+      "name": "disk_full",
+      "baseline": "PASS",
+      "fault": "FAIL",
+      "recovered": "PASS"
+    },
+    {
+      "name": "redfish_critical",
+      "baseline": "PASS",
+      "fault": "FAIL",
+      "recovered": "PASS",
+      "simulated_hardware_status": true
+    }
+  ],
+  "isolation": {
+    "launcher_and_worker_namespace_ids_differed": {
+      "user": true,
+      "mount": true,
+      "network": true
+    },
+    "tmpfs_limit_bytes": 8388608,
+    "normal_cleanup_completed": true
+  },
+  "limitations": [
+    "This file is a sanitized record, not cryptographically signed evidence.",
+    "Redfish hardware health was simulated; no physical BMC was tested.",
+    "The service case stopped a lab-owned endpoint, not a host systemd unit.",
+    "Raw reports and snapshots are intentionally excluded from Git."
+  ]
+}

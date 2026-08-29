@@ -8,3 +8,10 @@ artifacts/
 .coverage
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.tox/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp

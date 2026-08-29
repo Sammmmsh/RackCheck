@@ -19,9 +19,11 @@ not a production certification.
 
 ## Final lab run
 
-Local evidence is under
-[the final lab index](../artifacts/final-lab/run-20260828T141733Z-1aec2179/index.html)
-and [its summary](../artifacts/final-lab/run-20260828T141733Z-1aec2179/summary.json).
+A [sanitized lab summary](evidence/final-lab-summary.json) is tracked for
+GitHub. A [synthetic DNS failure report](evidence/dns-failure-report.md)
+demonstrates the full report format without exposing machine identifiers.
+Raw HTML reports and snapshots remain local and ignored by Git because they
+contain environment-specific evidence.
 
 | Case | Baseline | Injected condition | After recovery |
 | --- | --- | --- | --- |
@@ -52,11 +54,14 @@ links describe this workspace; regenerate evidence after cloning elsewhere.
 
 ## Package
 
-The locally tested wheel is artifacts/package/rackcheck-0.1.0-py3-none-any.whl.
+The locally tested wheel is
+artifacts/github-ready-package/rackcheck-0.1.0-py3-none-any.whl.
+It is a local build artifact and is not committed; build it from the tagged
+source for a GitHub release.
 SHA-256:
 
 ~~~text
-46011f279095075a7ba299a80d6afadd7a0ad8f2abab73cfe366e2b43cf51eb6
+3b7e240aca72909cd24d84b6c0f17ee256d6bcdd435c28d8257a457570ee461a
 ~~~
 
 Its console entry point reported 0.1.0 from the isolated installation, and a
@@ -73,3 +78,28 @@ working directory was outside the source package.
   the complete lab were verified without installing system packages.
 
 No host service, DNS setting, route or physical disk was changed for fault testing.
+
+## GitHub readiness audit
+
+Repeated on 2026-08-29 before the public-release preparation commit:
+
+- Scanned all tracked files and every existing Git revision for common secret,
+  private-key, credentialed-URL, machine-hostname and local-user-path patterns.
+  No real secret or machine-identity finding remained. One fake credential URL
+  is intentionally retained in a URL-rejection test.
+- Verified every relative Markdown link resolves to a tracked file. Raw local
+  artifacts were replaced by the sanitized summary and synthetic report above.
+- Confirmed generated artifacts, build output, virtual environments and Python
+  bytecode are ignored and absent from the Git index.
+- Updated GitHub Actions to current releases pinned by full commit SHA, disabled
+  persisted checkout credentials, retained read-only token permissions, added a
+  job timeout, and configured Dependabot for action updates.
+- Parsed the workflow, Dependabot file and package metadata; rebuilt and
+  inspected the wheel including every RECORD digest and bundled MIT license.
+- Installed the wheel offline in a fresh environment outside the source tree;
+  the CLI, fixture report and child HTTP probe passed.
+- Reran all 57 tests on Windows and Ubuntu WSL.
+
+The workflow is locally validated but cannot have a GitHub run until the
+repository is pushed. Python 3.14 is included in the CI matrix for that first
+hosted compatibility check.
